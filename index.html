@@ -1,1 +1,528 @@
-https://embed.liveavatar.com/v1/afb36080-1731-42c3-a7f4-520ed77159d9
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ALICE Voice Agent</title>
+
+  <script>
+    try {
+      localStorage.removeItem('df-messenger-state');
+      localStorage.removeItem('df-messenger-settings');
+    } catch(e) {}
+  </script>
+
+  <link rel="stylesheet" href="https://www.gstatic.com/dialogflow-console/fast/df-messenger/prod/v1/themes/df-messenger-default.css">
+  <style>
+    /* --- WIDGET STYLING --- */
+    df-messenger {
+      z-index: 999;
+      position: fixed;
+      --df-messenger-font-color: #000;
+      --df-messenger-font-family: Google Sans;
+      --df-messenger-chat-background: #f3f6fc;
+      --df-messenger-message-user-background: #d3e3fd;
+      --df-messenger-message-bot-background: #fff;
+      /* Force Large Size */
+      --df-messenger-chat-window-height: 80vh !important; 
+      --df-messenger-chat-window-width: 500px !important; 
+      
+      bottom: 16px;
+      right: 16px;
+    }
+
+    /* --- BUTTONS --- */
+    /* 1. Microphone Button */
+    #voice-trigger-btn {
+      position: fixed;
+      bottom: 20px; right: 90px; z-index: 1000;
+      width: 50px; height: 50px; border-radius: 50%; border: none;
+      background-color: #4285F4; color: white; font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2); display: flex; align-items: center;
+      justify-content: center; transition: background-color 0.2s ease, transform 0.2s ease;
+      outline: none;
+    }
+    #voice-trigger-btn:hover { transform: scale(1.1);
+    }
+
+    /* Mic States */
+    #voice-trigger-btn.initializing { background-color: #FBBC05 !important; cursor: wait;
+    }
+    #voice-trigger-btn.hearing { background-color: #EA4335 !important; box-shadow: 0 0 15px #EA4335; animation: pulse-red 1.5s infinite;
+    }
+    #voice-trigger-btn.speaking { background-color: #FBBC05 !important; color: #fff; cursor: pointer; animation: pulse-ring-yellow 1.5s infinite;
+    }
+
+    /* 2. Mute Button */
+    #mute-btn {
+      position: fixed;
+      bottom: 25px; right: 150px; z-index: 1000; width: 40px; height: 40px;
+      border-radius: 50%; border: none; background-color: #f1f3f4; color: #5f6368; font-size: 20px;
+      cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); display: flex; align-items: center;
+      justify-content: center; transition: all 0.2s ease; outline: none;
+    }
+    #mute-btn:hover { background-color: #e8eaed; transform: scale(1.1); }
+    #mute-btn.muted { background-color: #fce8e6; color: #d93025;
+    }
+
+    /* 3. Help Button */
+    #help-btn {
+      position: fixed;
+      bottom: 25px; right: 200px; z-index: 1000; width: 40px; height: 40px;
+      border-radius: 50%; border: none; background-color: #f1f3f4; color: #5f6368; font-size: 20px;
+      font-weight: bold; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); 
+      display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;
+      outline: none;
+    }
+    #help-btn:hover { background-color: #e8eaed; transform: scale(1.1);
+    }
+
+    /* 4. Download Button */
+    #download-btn {
+      position: fixed;
+      bottom: 25px; right: 250px; z-index: 1000; width: 40px; height: 40px;
+      border-radius: 50%; border: none; background-color: #f1f3f4; color: #5f6368; font-size: 18px;
+      font-weight: bold; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); 
+      display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;
+      outline: none;
+    }
+    #download-btn:hover { background-color: #e8eaed; transform: scale(1.1);
+    }
+
+    /* --- TRANSCRIPT BOX --- */
+    #live-transcript {
+      position: fixed;
+      bottom: 28px; right: 310px; 
+      background: rgba(32, 33, 36, 0.95);
+      color: white; padding: 10px 16px; border-radius: 24px; font-family: 'Google Sans', sans-serif;
+      font-size: 14px; letter-spacing: 0.5px; max-width: 350px; display: none; z-index: 998;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15); white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; pointer-events: none; transition: opacity 0.3s ease;
+    }
+
+    /* --- INSTRUCTION MODAL --- */
+    #instruction-modal {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.5); z-index: 2000; display: flex;
+      align-items: center;
+      justify-content: center; backdrop-filter: blur(2px);
+    }
+    .modal-content {
+      background: white; width: 90%;
+      max-width: 400px; padding: 25px;
+      border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      font-family: 'Google Sans', sans-serif; position: relative;
+    }
+    .modal-content h2 { margin-top: 0; color: #4285F4; font-size: 22px;
+    }
+    .modal-content p { color: #5f6368; line-height: 1.5; font-size: 15px; margin-bottom: 12px;
+    }
+    .modal-content ul { padding-left: 20px; margin-bottom: 20px; }
+    .modal-content li { margin-bottom: 8px;
+    color: #3c4043; }
+    .close-modal-btn {
+      width: 100%; padding: 12px; border: none;
+      background: #4285F4; color: white;
+      font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold;
+      transition: background 0.2s;
+    }
+    .close-modal-btn:hover { background: #3367D6; }
+
+    /* Animations */
+    @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(234, 67, 53, 0.7);
+    } 70% { box-shadow: 0 0 0 10px rgba(234, 67, 53, 0);
+    } 100% { box-shadow: 0 0 0 0 rgba(234, 67, 53, 0);
+    } }
+    @keyframes pulse-ring-yellow { 0% { box-shadow: 0 0 0 0 rgba(251, 188, 5, 0.7);
+    } 70% { box-shadow: 0 0 0 15px rgba(251, 188, 5, 0);
+    } 100% { box-shadow: 0 0 0 0 rgba(251, 188, 5, 0);
+    } }
+  </style>
+</head>
+<body>
+
+  <iframe 
+    src="https://embed.liveavatar.com/v1/afb36080-1731-42c3-a7f4-520ed77159d9"
+    allow="microphone; camera; display-capture"
+    style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 0;">
+  </iframe>
+
+  <script>
+    const nuclearOpenLoop = setInterval(() => {
+        const dfMessenger = document.querySelector('df-messenger');
+        if (dfMessenger && dfMessenger.shadowRoot) {
+            const shadow = dfMessenger.shadowRoot;
+            if (!shadow.querySelector('#nuclear-open-style')) {
+                const style = document.createElement('style');
+               
+                style.id = 'nuclear-open-style';
+                // THIS CSS NOW REPLACES THE BUBBLE ICON
+                style.textContent = `
+                    .chat-wrapper { 
+                        display: flex !important;
+        
+                        visibility: visible !important;
+                        opacity: 1 !important;
+                        bottom: 0px !important;
+                        height: var(--df-messenger-chat-window-height) !important;
+    
+                        width: var(--df-messenger-chat-window-width) !important;
+                        transform: none !important;
+                        pointer-events: all !important;
+                    }
+                    /* CUSTOM ICON OVERRIDE */
+                    button#widgetIcon {
+                        background-image: url('https://avatars.slack-edge.com/2025-12-19/10170520751025_29a6b4ccf1c55fd5f40d_512.png') !important;
+                        background-size: cover !important;
+                        background-position: center !important;
+                        background-repeat: no-repeat !important;
+                        background-color: transparent !important;
+                        border: none !important;
+                    }
+                    /* Hide default SVG */
+                    button#widgetIcon svg {
+                        display: none !important;
+                    }
+                `;
+                shadow.appendChild(style);
+            }
+            if (dfMessenger.getAttribute('expand') !== 'true') {
+                 dfMessenger.setAttribute('expand', 'true');
+            }
+            const wrapper = shadow.querySelector('.chat-wrapper');
+            if (wrapper && window.getComputedStyle(wrapper).display !== 'none') {
+                clearInterval(nuclearOpenLoop);
+            }
+        }
+    }, 50);
+    setTimeout(() => clearInterval(nuclearOpenLoop), 10000);
+  </script>
+
+  <script src="https://www.gstatic.com/dialogflow-console/fast/df-messenger/prod/v1/df-messenger.js"></script>
+   
+  <df-messenger
+    expand="true"
+    location="us"
+    project-id="vz-nonit-np-k25v-dev-aliceg-0"
+    agent-id="bc4d57c6-899b-4e4a-bc7b-9739ac8a60ed"
+    language-code="en"
+    max-query-length="-1">
+    <df-messenger-chat-bubble
+      chat-title="ALICE-Voice-v3"
+      chat-title-icon="https://avatars.slack-edge.com/2025-12-19/10170520751025_29a6b4ccf1c55fd5f40d_512.png">
+    </df-messenger-chat-bubble>
+  </df-messenger>
+
+  <div id="live-transcript">Initializing...</div>
+  
+  <button id="download-btn" title="Download Transcript">⬇️</button>
+  <button id="help-btn" title="How to Use">?</button>
+  <button id="mute-btn" title="Toggle Sound Response">🔊</button>
+  <button id="voice-trigger-btn" title="Click to Speak">🎙️</button>
+
+  <div id="instruction-modal">
+      <div class="modal-content">
+        
+          <h2>How to use Alice</h2>
+          <ul>
+              <li><strong>Tap 🎙️ (Blue):</strong> Starts listening.
+              Speak your command clearly.</li>
+              <li><strong>Tap Chat Icon:</strong> Press the chat bubble (Avatar) in the bottom right corner to see text.</li>
+              <li><strong>Auto-Send:</strong> Stop speaking for 1 second to automatically send your message.</li>
+              <li><strong>Tap 🎙️ (Yellow):</strong> Alice is speaking.
+              Tap it to interrupt her and speak immediately.</li>
+              <li><strong>Tap ⬇️:</strong> Download the conversation transcript.</li>
+          </ul>
+          <p style="font-size:13px; color:#999; text-align:center;">Mic turns 🔴 Red when listening.</p>
+          <button class="close-modal-btn" onclick="document.getElementById('instruction-modal').style.display='none'">Got it!</button>
+      </div>
+  </div>
+
+  <script>
+    // --- APP LOGIC ---
+    const micBtn = document.getElementById('voice-trigger-btn');
+    const muteBtn = document.getElementById('mute-btn');
+    const helpBtn = document.getElementById('help-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const helpModal = document.getElementById('instruction-modal');
+    const transcriptBox = document.getElementById('live-transcript');
+    const dfMessenger = document.querySelector('df-messenger');
+
+    const EXIT_COMMANDS = ["stop", "thank you", "thanks", "bye", "cancel"];
+    const STABILITY_DELAY = 1200;
+    let isMicActive = false;
+    let isProcessing = false; 
+    let isMuted = false;
+    let availableVoices = [];
+    
+    let debounceTimer = null;
+    let watchdogTimer = null;
+    let pendingTranscript = ""; 
+
+    // Transcript Storage
+    let conversationLog = [];
+    // --- HELP BUTTON LOGIC ---
+    helpBtn.addEventListener('click', () => {
+        helpModal.style.display = "flex";
+    });
+    // --- DOWNLOAD BUTTON LOGIC ---
+    downloadBtn.addEventListener('click', () => {
+        if (conversationLog.length === 0) {
+            alert("No conversation to download yet.");
+            return;
+        }
+        
+        const textContent = conversationLog.join("\n\n");
+        const blob = new Blob([textContent], { type: 'text/plain' });
+     
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        a.href = url;
+        a.download = `alice-transcript-${timestamp}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    });
+    // --- LOAD VOICES ---
+    const loadVoices = () => { availableVoices = window.speechSynthesis.getVoices(); };
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;  
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      // --- MIC CLICK ---
+      micBtn.addEventListener('click', () => {
+        // 1. INTERRUPT
+        if (isProcessing) {
+            console.log("👆 Interrupt -> Listen");
+            window.speechSynthesis.cancel();
+            isProcessing = false;
+            startMic(); 
+          
+            return;
+        }
+
+        // 2. TOGGLE
+        if (isMicActive) {
+            manualStop(); 
+        } else {
+            startMic();
+        }
+      });
+      function startMic() {
+          if (isMicActive) return;
+          clearTimeout(watchdogTimer);
+          // Clear safety timer
+
+          pendingTranscript = "";
+          transcriptBox.style.display = "block";
+          transcriptBox.innerText = "Listening...";
+          
+          updateButtonState("hearing"); // RED
+          
+          try { 
+             recognition.start();
+             isMicActive = true;
+          } catch(e) {
+             if(e.message && e.message.includes('started')) isMicActive = true;
+          }
+      }
+
+      recognition.onstart = () => { 
+          isMicActive = true;
+          transcriptBox.innerText = "Listening...";
+          updateButtonState("hearing"); 
+      };
+
+      function manualStop() {
+          isMicActive = false;
+          recognition.stop();
+          if (pendingTranscript.length > 1) {
+              executeCommand(pendingTranscript);
+          } else {
+              transcriptBox.style.display = "none";
+              updateButtonState("idle");
+          }
+      }
+
+      // --- RESULT HANDLING ---
+      recognition.onresult = (event) => {
+        const results = event.results;
+        const latestResult = results[results.length - 1];
+        let transcript = latestResult[0].transcript;
+        
+        let command = transcript.replace(/^[^a-zA-Z0-9]+/, '').trim();
+        if (command.length < 1) return;
+        pendingTranscript = command; 
+        const time = new Date().toLocaleTimeString().split(' ')[0];
+        transcriptBox.innerText = `[${time}] Heard: "${command}"...`;
+
+        clearTimeout(debounceTimer);
+        if (latestResult.isFinal) {
+            recognition.stop();
+        } else {
+            debounceTimer = setTimeout(() => {
+                recognition.stop(); 
+            }, STABILITY_DELAY);
+        }
+      };
+
+      recognition.onend = () => {
+          isMicActive = false;
+          if (pendingTranscript.length > 1) {
+              if (EXIT_COMMANDS.includes(pendingTranscript.toLowerCase())) {
+                  transcriptBox.innerText = "Session Ended.";
+                  updateButtonState("idle");
+                  return;
+              }
+              executeCommand(pendingTranscript);
+          } else {
+              if (!isProcessing) updateButtonState("idle");
+          }
+      };
+
+      recognition.onerror = (event) => {
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+              updateButtonState("idle");
+              isMicActive = false;
+          }
+      };
+      function executeCommand(text) {
+          isProcessing = true; 
+          updateButtonState("speaking");
+          // YELLOW
+          
+          transcriptBox.innerText = `Sent: "${text}"`;
+          console.log("SENDING:", text);
+
+          // LOG USER MESSAGE
+          const time = new Date().toLocaleTimeString();
+          conversationLog.push(`[${time}] User: ${text}`);
+          
+          // Watchdog
+          clearTimeout(watchdogTimer);
+          watchdogTimer = setTimeout(() => {
+              if (isProcessing) {
+                 console.warn("Watchdog: No response.");
+                 isProcessing = false;
+                 updateButtonState("idle");
+              }
+          }, 
+          8000);
+          
+          dfMessenger.setAttribute('expand', 'true');
+          dfMessenger.renderCustomText(text, true);
+          dfMessenger.sendRequest("query", text);
+          
+          pendingTranscript = "";
+      }
+
+    } else {
+        alert("Browser not supported");
+    }
+
+    // --- UI STATES ---
+    function updateButtonState(state) {
+        micBtn.classList.remove('initializing', 'hearing', 'speaking');
+        micBtn.style.backgroundColor = "#4285F4"; // Blue
+        
+        if (state === "initializing") micBtn.classList.add('initializing');
+        else if (state === "hearing") micBtn.classList.add('hearing');
+        else if (state === "speaking") micBtn.classList.add('speaking');
+    }
+
+    // --- RESPONSE ---
+    window.addEventListener('df-response-received', (event) => {
+        // KILL WATCHDOG -> Keeps button Yellow
+        clearTimeout(watchdogTimer);
+        
+        let botText = "";
+        if (event.detail.messages) {
+            const msg = event.detail.messages.find(m => m.type === 'text');
+            if (msg) botText = 
+            msg.text;
+        }
+        if (!botText && event.detail.raw && event.detail.raw.queryResult) {
+            const qr = event.detail.raw.queryResult;
+            if (qr.responseMessages) {
+                const txt = qr.responseMessages.find(m => m.text);
+                if (txt) botText = txt.text.text[0];
+        
+            } else if (qr.fulfillmentText) botText = qr.fulfillmentText;
+        }
+
+        if (botText) {
+             const time = new Date().toLocaleTimeString();
+             conversationLog.push(`[${time}] Alice: ${botText}`);
+        }
+
+        if (botText && !isMuted) {
+            transcriptBox.innerText = "Alice is speaking (Tap to Interrupt)...";
+            updateButtonState("speaking"); // Ensure Yellow
+            speakText(botText);
+        } else {
+            isProcessing = false;
+            startMic();
+        }
+
+        if (event.detail.raw && event.detail.raw.queryResult) {
+            const msgs = event.detail.raw.queryResult.responseMessages ||
+            event.detail.raw.queryResult.fulfillmentMessages;
+            if (msgs) {
+                const audioMsg = msgs.find(m => m.payload && m.payload.audioUrl);
+                if (audioMsg && !isMuted) playAudioFile(audioMsg.payload.audioUrl);
+            }
+        }
+    });
+    function speakText(text) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        if (availableVoices.length === 0) availableVoices = window.speechSynthesis.getVoices();
+        let v = availableVoices.find(v => v.name.includes("Google") && v.name.includes("US"));
+        if (!v) v = availableVoices.find(v => v.lang.includes("en-"));
+        if (v) utterance.voice = v;
+        // AUTO-RESTART MIC ON END
+        utterance.onend = () => { 
+            isProcessing = false;
+            startMic(); 
+        };
+        utterance.onerror = () => { 
+            isProcessing = false;
+            startMic(); 
+        };
+        window.speechSynthesis.speak(utterance);
+    }
+
+    function playAudioFile(url) {
+        updateButtonState("speaking");
+        const audio = new Audio(url);
+        audio.onended = () => {
+             isProcessing = false;
+             startMic(); 
+        };
+        audio.onerror = () => {
+             isProcessing = false;
+             startMic();
+        };
+        audio.play();
+    }
+
+    muteBtn.addEventListener('click', () => {
+        isMuted = !isMuted;
+        muteBtn.textContent = isMuted ? "🔇" : "🔊";
+        muteBtn.classList.toggle('muted', isMuted);
+        if (isMuted) window.speechSynthesis.cancel();
+    });
+  </script>
+</body>
+</html>
